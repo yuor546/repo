@@ -1,6 +1,7 @@
 import os
 import ast
 import random
+import asyncio
 import discord
 from discord.ext import commands
 
@@ -95,7 +96,20 @@ class ChatBot(commands.Cog):
         """Very small reasoning step for math expressions."""
         try:
             tree = ast.parse(message, mode="eval")
-            if all(isinstance(node, (ast.Expression, ast.BinOp, ast.UnaryOp, ast.Num, ast.operator)) for node in ast.walk(tree)):
+            if all(
+                isinstance(
+                    node,
+                    (
+                        ast.Expression,
+                        ast.BinOp,
+                        ast.UnaryOp,
+                        ast.Num,
+                        ast.Constant,
+                        ast.operator,
+                    ),
+                )
+                for node in ast.walk(tree)
+            ):
                 result = eval(compile(tree, filename="<ast>", mode="eval"))
                 return str(result)
         except Exception:
@@ -153,8 +167,21 @@ class ChatBot(commands.Cog):
         filtered = self.filter_output(response)
         self.memory.add_training(prompt, response)
         await message.channel.send(filtered)
-        # Send a private message to the user as well
         if self.enable_tts:
+            # If connected to a voice channel, speak the reply aloud
+            if message.guild and message.guild.id in self.voice_clients:
+                vc = self.voice_clients[message.guild.id]
+                try:
+                    path = self.tts.speak(filtered)
+                    if vc.is_playing():
+                        vc.stop()
+                    vc.play(
+                        discord.FFmpegPCMAudio(path),
+                        after=lambda e: os.remove(path),
+                    )
+                except Exception:
+                    pass
+            # Also send the text as a private message
             try:
                 await message.author.send(filtered)
             except Exception:
