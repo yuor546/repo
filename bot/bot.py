@@ -24,8 +24,9 @@ async def call_ai_model(prompt: str) -> str:
     return f"Echo: {prompt}"
 
 class ChatBot(commands.Cog):
-    def __init__(self, bot: commands.Bot, tokenizer=None):
+    def __init__(self, bot: commands.Bot, tokenizer=None, name: str | None = None):
         self.bot = bot
+        self.name = name
         self.tokenizer = tokenizer or SimpleTokenizer()
         self.personality = os.getenv(
             "BOT_PERSONALITY",
@@ -34,9 +35,9 @@ class ChatBot(commands.Cog):
 
         self.siblings = env_list("BOT_SIBLINGS", "Alpha,Beta")
         self.sibling_personalities = {}
-        for name in self.siblings:
-            key = f"BOT_PERSONALITY_{name.upper()}"
-            self.sibling_personalities[name] = os.getenv(key, self.personality)
+        for s in self.siblings:
+            key = f"BOT_PERSONALITY_{s.upper()}"
+            self.sibling_personalities[s] = os.getenv(key, self.personality)
 
         self.last_messages = {}
 
@@ -121,19 +122,15 @@ class ChatBot(commands.Cog):
         if message.author != self.bot.user:
             self.last_messages[channel_id] = (message.author.id, message.content)
 
-        # Only respond when mentioned or when the bot name is in the text
+        # Only respond when mentioned or when this bot's name is in the text
+        name_to_check = self.name.lower() if self.name else self.bot.user.name.lower()
         if not (
             self.bot.user in message.mentions
-            or any(name.lower() in message.content.lower() for name in self.siblings)
+            or name_to_check in message.content.lower()
         ):
             return
 
-        # Determine which sibling should reply
-        sibling = next(
-            (name for name in self.siblings if name.lower() in message.content.lower()),
-            self.siblings[0],
-        )
-        personality = self.sibling_personalities.get(sibling, self.personality)
+        personality = self.sibling_personalities.get(self.name, self.personality)
 
         tokens = self.tokenizer.encode(message.content)
         prompt = self.tokenizer.decode(tokens)
@@ -416,16 +413,34 @@ class ChatBot(commands.Cog):
         await ctx.send(f"Playing {file_path}.")
 
 
-def main():
+async def run_single(token: str, sibling: str | None = None):
     intents = discord.Intents.default()
     intents.message_content = True
     bot = commands.Bot(command_prefix="/", intents=intents)
-    bot.add_cog(ChatBot(bot))
+    bot.add_cog(ChatBot(bot, name=sibling))
+    await bot.start(token)
 
-    token = os.getenv("DISCORD_TOKEN")
-    if not token:
-        raise RuntimeError("DISCORD_TOKEN environment variable not set")
-    bot.run(token)
+
+def main():
+    tokens_env = os.getenv("DISCORD_TOKENS")
+    if tokens_env:
+        tokens = [t.strip() for t in tokens_env.split(",") if t.strip()]
+    else:
+        token = os.getenv("DISCORD_TOKEN")
+        if not token:
+            raise RuntimeError("DISCORD_TOKEN or DISCORD_TOKENS must be set")
+        tokens = [token]
+
+    sibling_names = env_list("BOT_SIBLINGS", "Alpha,Beta")
+
+    async def runner():
+        tasks = []
+        for i, token in enumerate(tokens):
+            sibling = sibling_names[i] if i < len(sibling_names) else None
+            tasks.append(run_single(token, sibling))
+        await asyncio.gather(*tasks)
+
+    asyncio.run(runner())
 
 if __name__ == "__main__":
     main()

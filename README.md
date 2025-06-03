@@ -47,8 +47,10 @@ and make sure to follow Discord's terms of service when deploying a bot.
 pip install discord.py gTTS
 # On Linux you may need the `ffmpeg` package for voice playback
 
-# Set the Discord token in the environment
+# Set the Discord token in the environment (single bot)
 export DISCORD_TOKEN="YOUR_BOT_TOKEN"
+# Or run two sibling bots with separate tokens
+# export DISCORD_TOKENS="TOKEN_FOR_ALPHA,TOKEN_FOR_BETA"
 
 # Optionally set a personality prompt
 export BOT_PERSONALITY="You are an entertaining assistant."
@@ -127,7 +129,9 @@ This example demonstrates additional features beyond simple tokenization:
 - **Sibling Personalities**: Two AI siblings can be configured with the
   `BOT_SIBLINGS` environment variable (default `Alpha,Beta`). Each sibling can
   have its own personality prompt using `BOT_PERSONALITY_ALPHA` and
-  `BOT_PERSONALITY_BETA`.
+  `BOT_PERSONALITY_BETA`. Provide matching tokens with
+  `DISCORD_TOKENS="TOKEN_FOR_ALPHA,TOKEN_FOR_BETA"` to run them as separate bot
+  accounts from the same codebase.
 
 These capabilities are intentionally simple but illustrate how the bot can be extended in many directions.
 
