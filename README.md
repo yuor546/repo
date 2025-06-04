@@ -6,9 +6,9 @@ The bot is implemented with `discord.py` and aims to be extensible for
 additional features such as moderation or logging. By default it tries to be
 generally entertaining in its responses.
 
-The included `call_ai_model` function does **not** use ChatGPT or any external
-service—it simply echoes the prompt. You are encouraged to replace it with your
-own model integration so the bot can run entirely on your own AI stack.
+The included `call_ai_model` function loads a tiny Markov chain model so the bot
+can operate without any external service. You may replace it with your own model
+integration so the bot can run entirely on your own AI stack.
 
 ## Architecture Overview
 
@@ -101,6 +101,19 @@ async def call_ai_model(prompt: str) -> str:
 
 If you want to swap in a local model such as Llama, you can modify the
 function to invoke that model instead.
+
+### Training the Sample Markov Model
+
+The repository includes a toy Markov chain implementation that can run
+without any external APIs. Train it using your stored conversation pairs:
+
+```bash
+python -m bot.train_markov
+```
+
+This generates `markov_model.pkl`, which `bot/bot.py` loads automatically.
+The model learns from the examples collected with `/train` and from observed
+conversations, so you can improve it over time.
 
 ## Extensibility
 

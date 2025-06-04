@@ -14,14 +14,30 @@ from .adventure import AdventureGame
 from .dialogue import DialogueMemory
 from .logger import Logger
 from .utils import env_bool, env_list
+from .markov import MarkovChain
 
-# Choose your AI backend here. Replace with your own implementation.
-# For demonstration, we use a placeholder function.
+# Choose your AI backend here. By default we use a tiny Markov chain model.
+
+MODEL_PATH = os.getenv("MODEL_PATH", "markov_model.pkl")
+_chain: MarkovChain | None = None
+
 
 async def call_ai_model(prompt: str) -> str:
-    """Placeholder AI call. Replace with your own model integration."""
-    # In a real implementation, send `prompt` to your model (OpenAI, Llama, etc.)
-    # and return the model's response.
+    """Generate a reply using a local Markov chain model."""
+    global _chain
+    if _chain is None:
+        tokenizer = SimpleTokenizer()
+        chain = MarkovChain(tokenizer)
+        if os.path.isfile(MODEL_PATH):
+            try:
+                chain.load(MODEL_PATH)
+                _chain = chain
+            except Exception:
+                _chain = None
+        else:
+            _chain = None
+    if _chain:
+        return _chain.generate(prompt)
     return f"Echo: {prompt}"
 
 class ChatBot(commands.Cog):
