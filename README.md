@@ -6,6 +6,10 @@ The bot is implemented with `discord.py` and aims to be extensible for
 additional features such as moderation or logging. By default it tries to be
 generally entertaining in its responses.
 
+The included `call_ai_model` function does **not** use ChatGPT or any external
+service—it simply echoes the prompt. You are encouraged to replace it with your
+own model integration so the bot can run entirely on your own AI stack.
+
 ## Architecture Overview
 
 1. **Message Reception**: The bot listens to Discord events using
@@ -44,7 +48,7 @@ and make sure to follow Discord's terms of service when deploying a bot.
 
 ```bash
 # Install dependencies
-pip install discord.py gTTS
+pip install -r requirements.txt
 # On Linux you may need the `ffmpeg` package for voice playback
 
 # Set the Discord token in the environment (single bot)

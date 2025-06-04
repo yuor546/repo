@@ -404,13 +404,16 @@ class ChatBot(commands.Cog):
     @commands.command()
     async def join(self, ctx: commands.Context):
         """Join the voice channel of the command author."""
-        if ctx.author.voice:
-            channel = ctx.author.voice.channel
-            vc = await channel.connect()
-            self.voice_clients[ctx.guild.id] = vc
-            await ctx.send(f"Joined {channel.name}")
-        else:
+        if not ctx.author.voice:
             await ctx.send("You are not in a voice channel.")
+            return
+        if ctx.guild.id in self.voice_clients:
+            await ctx.send("Already connected.")
+            return
+        channel = ctx.author.voice.channel
+        vc = await channel.connect()
+        self.voice_clients[ctx.guild.id] = vc
+        await ctx.send(f"Joined {channel.name}")
 
     @commands.command()
     async def leave(self, ctx: commands.Context):
