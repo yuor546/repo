@@ -76,6 +76,8 @@ export BOT_SIBLINGS="Vivi,Vex"
 python -m bot.bot
 ```
 
+When both bots share a channel they can hold short conversations without user input.
+
 The bot supports simple slash-style commands like `/ping`, `/help`, `/tictactoe`, `/rps`, `/converse`, and history commands in
  addition to responding when it is mentioned by name or `@`. It can also join a voice channel and play a local audio file.
 
@@ -174,7 +176,7 @@ This example demonstrates additional features beyond simple tokenization:
 - **Voice Transcription**: Attach an audio file and use `/transcribe` to convert speech to text.
 - **Cookies**: Server owners can gift the bot happiness cookies via `/giftcookies`.
 - **Rewards**: Win games to earn reward points and view them with `/rewards`.
-- **Sibling Chat**: Use `/converse` to watch the sibling bots talk to each other for a few rounds.
+- **Sibling Chat**: Use `/converse` to watch the sibling bots talk to each other for a few rounds. They will also naturally reply to one another when sharing a channel, up to a few messages each time.
 - **Deep Training Command**: Kick off LSTM training from Discord with `/deeptrain`.
 - **Language Filter**: The bot allows mild swearing but will replace any blocked terms with `[filtered]`.
 - **Entertaining Personality**: Responses aim to be playful and amusing.

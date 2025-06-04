@@ -19,6 +19,7 @@ from .utils import env_bool, env_list
 
 # Keep track of running bot instances so they can converse
 BOT_REGISTRY: dict[str, commands.Bot] = {}
+BOT_USERS: dict[int, str] = {}
 import pickle
 from .markov import MarkovChain
 from .lstm_model import LSTMModel
@@ -30,6 +31,9 @@ LSTM_MODEL_PATH = os.getenv("LSTM_MODEL_PATH", "lstm_model.h5")
 LSTM_VOCAB_PATH = os.getenv("LSTM_VOCAB_PATH", "lstm_vocab.pkl")
 _chain: MarkovChain | None = None
 _lstm: LSTMModel | None = None
+
+# Limit automatic sibling conversation to avoid infinite loops
+MAX_CONVERSE_ROUNDS = 6
 
 
 async def call_ai_model(prompt: str) -> str:
@@ -91,6 +95,8 @@ class ChatBot(commands.Cog):
         self.hangman_games = {}
         self.adventure_games = {}
         self.voice_clients = {}
+        # Track ongoing sibling conversations per channel
+        self.converse_depth: dict[int, int] = {}
 
         # Voice and TTS
         self.enable_tts = env_bool("ENABLE_TTS", True)
@@ -160,14 +166,27 @@ class ChatBot(commands.Cog):
     async def on_message(self, message: discord.Message):
         if message.author == self.bot.user:
             return
+
+        channel_id = message.channel.id
+
+        # Track human vs bot messages to manage sibling conversations
+        if not message.author.bot:
+            self.converse_depth[channel_id] = 0
+        elif message.author.name in self.siblings and message.author.name != self.name:
+            depth = self.converse_depth.get(channel_id, 0)
+            if depth >= MAX_CONVERSE_ROUNDS:
+                return
+            self.converse_depth[channel_id] = depth + 1
+            respond_anyway = True
+        else:
+            respond_anyway = False
+
         self.logger.log(f"Message from {message.author}: {message.content}")
         self.dialogue.add(message.author.id, "User", message.content)
 
         ctx = await self.bot.get_context(message)
         if ctx.valid:
             return  # Let command processing handle it
-
-        channel_id = message.channel.id
 
         # Learn from human-to-human conversations
         last = self.last_messages.get(channel_id)
@@ -181,6 +200,7 @@ class ChatBot(commands.Cog):
         if not (
             self.bot.user in message.mentions
             or name_to_check in message.content.lower()
+            or respond_anyway
         ):
             return
 
@@ -552,6 +572,7 @@ async def run_single(token: str, sibling: str | None = None):
     @bot.event
     async def on_ready():
         BOT_REGISTRY[sibling or bot.user.name] = bot
+        BOT_USERS[bot.user.id] = sibling or bot.user.name
 
     await bot.start(token)
 
