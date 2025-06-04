@@ -16,6 +16,9 @@ from .adventure import AdventureGame
 from .dialogue import DialogueMemory
 from .logger import Logger
 from .utils import env_bool, env_list
+
+# Keep track of running bot instances so they can converse
+BOT_REGISTRY: dict[str, commands.Bot] = {}
 import pickle
 from .markov import MarkovChain
 from .lstm_model import LSTMModel
@@ -238,7 +241,7 @@ class ChatBot(commands.Cog):
     @commands.command()
     async def help(self, ctx: commands.Context):
         await ctx.send(
-            "Available commands: /ping, /help, /train, /deeptrain, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /join, /leave, /play, /transcribe"
+            "Available commands: /ping, /help, /train, /deeptrain, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /converse, /join, /leave, /play, /transcribe"
         )
 
     @commands.command()
@@ -450,6 +453,36 @@ class ChatBot(commands.Cog):
         points = self.memory.rewards(ctx.author.id)
         await ctx.send(f"You have {points} reward points.")
 
+    @commands.command()
+    async def converse(self, ctx: commands.Context, rounds: int = 4, *, start: str = "Hello"):
+        """Make this bot chat with its sibling for a few rounds."""
+        others = [s for s in self.siblings if s != self.name]
+        if not others:
+            await ctx.send("No sibling configured to talk to.")
+            return
+        other = others[0]
+        other_bot = BOT_REGISTRY.get(other)
+        if not other_bot:
+            await ctx.send(f"Sibling {other} is not online.")
+            return
+        channel = ctx.channel
+        history = ""
+        last = start
+        for i in range(rounds):
+            prompt_self = f"{self.sibling_personalities.get(self.name, self.personality)}\n{history}\nUser: {last}\nAssistant:"
+            resp_self = await call_ai_model(prompt_self)
+            resp_self = self.filter_output(resp_self)
+            await channel.send(resp_self)
+            history += f"\n{self.name}: {resp_self}"
+            last = resp_self
+
+            prompt_other = f"{self.sibling_personalities.get(other, self.personality)}\n{history}\nUser: {last}\nAssistant:"
+            resp_other = await call_ai_model(prompt_other)
+            resp_other = self.filter_output(resp_other)
+            await other_bot.get_channel(channel.id).send(resp_other)
+            history += f"\n{other}: {resp_other}"
+            last = resp_other
+
     # Voice channel commands
     @commands.command()
     async def join(self, ctx: commands.Context):
@@ -515,6 +548,11 @@ async def run_single(token: str, sibling: str | None = None):
     intents.message_content = True
     bot = commands.Bot(command_prefix="/", intents=intents)
     bot.add_cog(ChatBot(bot, name=sibling))
+
+    @bot.event
+    async def on_ready():
+        BOT_REGISTRY[sibling or bot.user.name] = bot
+
     await bot.start(token)
 
 
