@@ -238,7 +238,7 @@ class ChatBot(commands.Cog):
     @commands.command()
     async def help(self, ctx: commands.Context):
         await ctx.send(
-            "Available commands: /ping, /help, /train, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /join, /leave, /play, /transcribe"
+            "Available commands: /ping, /help, /train, /deeptrain, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /join, /leave, /play, /transcribe"
         )
 
     @commands.command()
@@ -246,6 +246,19 @@ class ChatBot(commands.Cog):
         """Store a simple training pair."""
         self.memory.add_training(prompt, response)
         await ctx.send("Training example stored.")
+
+    @commands.command()
+    async def deeptrain(self, ctx: commands.Context):
+        """Run deep LSTM training using stored conversations."""
+        await ctx.send("Starting deep training. This may take a while...")
+        loop = asyncio.get_event_loop()
+
+        def _run():
+            from .train_lstm import main as train_main
+            train_main()
+
+        await loop.run_in_executor(None, _run)
+        await ctx.send("Deep training complete. New model saved.")
 
     @commands.command()
     async def tictactoe(self, ctx: commands.Context, opponent: discord.Member):

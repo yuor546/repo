@@ -130,6 +130,18 @@ python -m bot.train_lstm
 If these files exist the bot will load the LSTM model instead of the Markov
 chain when generating replies.
 
+### Deep Training from Discord
+
+To retrain the LSTM model without leaving Discord, run the `/deeptrain` command
+in any channel the bot can access:
+
+```bash
+/deeptrain
+```
+
+This invokes the same process as running `python -m bot.train_lstm` locally and
+reloads the updated model when finished.
+
 ## Extensibility
 
 The current implementation is intentionally lightweight. You can add more
@@ -153,6 +165,7 @@ This example demonstrates additional features beyond simple tokenization:
 - **Voice Transcription**: Attach an audio file and use `/transcribe` to convert speech to text.
 - **Cookies**: Server owners can gift the bot happiness cookies via `/giftcookies`.
 - **Rewards**: Win games to earn reward points and view them with `/rewards`.
+- **Deep Training Command**: Kick off LSTM training from Discord with `/deeptrain`.
 - **Language Filter**: The bot allows mild swearing but will replace any blocked terms with `[filtered]`.
 - **Entertaining Personality**: Responses aim to be playful and amusing.
 - **Learning Mode**: The bot stores its replies as training data and even
