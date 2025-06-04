@@ -2,6 +2,7 @@ import os
 import ast
 import random
 import asyncio
+import tempfile
 import discord
 from discord.ext import commands
 
@@ -9,6 +10,7 @@ from .tokenizer import SimpleTokenizer
 from .memory import Memory
 from .games import TicTacToeGame, RockPaperScissorsGame, GuessNumberGame, HangmanGame
 from .tts import TextToSpeech
+from .stt import SpeechToText
 from .game_ai import GameAI
 from .adventure import AdventureGame
 from .dialogue import DialogueMemory
@@ -90,6 +92,7 @@ class ChatBot(commands.Cog):
         # Voice and TTS
         self.enable_tts = env_bool("ENABLE_TTS", True)
         self.tts = TextToSpeech(lang=os.getenv("TTS_LANG", "en"))
+        self.stt = SpeechToText(lang=os.getenv("STT_LANG", "en-US"))
 
         # Logger and dialogue memory
         self.logger = Logger()
@@ -235,7 +238,7 @@ class ChatBot(commands.Cog):
     @commands.command()
     async def help(self, ctx: commands.Context):
         await ctx.send(
-            "Available commands: /ping, /help, /train, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /join, /leave, /play"
+            "Available commands: /ping, /help, /train, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /join, /leave, /play, /transcribe"
         )
 
     @commands.command()
@@ -475,6 +478,23 @@ class ChatBot(commands.Cog):
         source = discord.FFmpegPCMAudio(file_path)
         vc.play(source)
         await ctx.send(f"Playing {file_path}.")
+
+    @commands.command()
+    async def transcribe(self, ctx: commands.Context):
+        """Transcribe an attached audio file."""
+        if not ctx.message.attachments:
+            await ctx.send("Attach an audio file to transcribe.")
+            return
+        attachment = ctx.message.attachments[0]
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            await attachment.save(tmp.name)
+            path = tmp.name
+        text = self.stt.transcribe(path)
+        os.remove(path)
+        if text:
+            await ctx.send(f"Transcription: {text}")
+        else:
+            await ctx.send("Unable to transcribe the audio.")
 
 
 async def run_single(token: str, sibling: str | None = None):

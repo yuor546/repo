@@ -50,6 +50,7 @@ and make sure to follow Discord's terms of service when deploying a bot.
 # Install dependencies
 pip install -r requirements.txt
 # On Linux you may need the `ffmpeg` package for voice playback
+# Speech transcription via `/transcribe` requires the `SpeechRecognition` package
 # Training the optional LSTM model requires the `tensorflow` package
 
 # Set the Discord token in the environment (single bot)
@@ -149,6 +150,7 @@ This example demonstrates additional features beyond simple tokenization:
 - **Rock Paper Scissors**: Challenge the bot with `/rps` and make moves with `/rpsmove`.
 - **History Commands**: Use `/history` to show recent conversation and `/clearhistory` to wipe it.
 - **Voice Chat**: Use `/join` and `/leave` to manage voice connections and `/play` to stream a local file.
+- **Voice Transcription**: Attach an audio file and use `/transcribe` to convert speech to text.
 - **Cookies**: Server owners can gift the bot happiness cookies via `/giftcookies`.
 - **Rewards**: Win games to earn reward points and view them with `/rewards`.
 - **Language Filter**: The bot allows mild swearing but will replace any blocked terms with `[filtered]`.
@@ -181,7 +183,7 @@ Training samples are stored in the memory database and included in the prompt wh
 
 ## Voice Commands
 
-Use `/join` to have the bot connect to your current voice channel. `/play <file>` will play a local audio file and `/leave` disconnects the bot.
+Use `/join` to have the bot connect to your current voice channel. `/play <file>` will play a local audio file and `/leave` disconnects the bot. Attach an audio file and use `/transcribe` to convert it to text.
 
 ## Moderating Language
 
@@ -200,7 +202,7 @@ Compile the modules to verify there are no syntax errors:
 ```bash
 python -m py_compile \
     bot/tokenizer.py bot/bot.py bot/memory.py bot/games.py \
-    bot/tts.py bot/game_ai.py bot/adventure.py bot/dialogue.py \
+    bot/tts.py bot/stt.py bot/game_ai.py bot/adventure.py bot/dialogue.py \
     bot/logger.py bot/utils.py
 ```
 
@@ -210,6 +212,12 @@ Set `ENABLE_TTS=true` to have the bot read its replies aloud in a voice channel
 using `gTTS`. Install the `gTTS` Python package and make sure `ffmpeg` is
 available. If a voice connection exists it will stream the generated audio and
 also send the text as a private message to the user who triggered it.
+
+## Speech Recognition
+
+Install the `SpeechRecognition` Python package and use `/transcribe` with an
+audio attachment to convert speech into text. The bot uses the offline Sphinx
+engine by default.
 
 ## Guess Number Game
 
@@ -265,7 +273,7 @@ Run compilation to ensure the new modules are error free:
 ```bash
 python -m py_compile \
     bot/tokenizer.py bot/bot.py bot/memory.py bot/games.py \
-    bot/tts.py bot/game_ai.py bot/adventure.py bot/dialogue.py \
+    bot/tts.py bot/stt.py bot/game_ai.py bot/adventure.py bot/dialogue.py \
     bot/logger.py bot/utils.py
 ```
 
