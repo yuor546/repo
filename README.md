@@ -56,14 +56,23 @@ pip install -r requirements.txt
 # Set the Discord token in the environment (single bot)
 export DISCORD_TOKEN="YOUR_BOT_TOKEN"
 # Or run two sibling bots with separate tokens
-# export DISCORD_TOKENS="TOKEN_FOR_ALPHA,TOKEN_FOR_BETA"
+# export DISCORD_TOKENS="TOKEN_FOR_VIVI,TOKEN_FOR_VEX"
 
 # Optionally set a personality prompt
 export BOT_PERSONALITY="You are an entertaining assistant."
 # Optional comma-separated names for two siblings
-export BOT_SIBLINGS="Vivi,Beta"
+export BOT_SIBLINGS="Vivi,Vex"
 
 # Run the bot
+python -m bot.bot
+```
+
+For two sibling bots named **Vivi** and **Vex**, place both tokens in the
+`DISCORD_TOKENS` variable before running:
+
+```bash
+export DISCORD_TOKENS="TOKEN_FOR_VIVI,TOKEN_FOR_VEX"
+export BOT_SIBLINGS="Vivi,Vex"
 python -m bot.bot
 ```
 
@@ -173,10 +182,10 @@ This example demonstrates additional features beyond simple tokenization:
 - **Mentions**: It only answers when mentioned by name or via `@`, allowing it
   to sit quietly until called upon.
 - **Sibling Personalities**: Two AI siblings can be configured with the
-  `BOT_SIBLINGS` environment variable (default `Vivi,Beta`). Each sibling can
-  have its own personality prompt using `BOT_PERSONALITY_ALPHA` and
-  `BOT_PERSONALITY_BETA`. Provide matching tokens with
-  `DISCORD_TOKENS="TOKEN_FOR_ALPHA,TOKEN_FOR_BETA"` to run them as separate bot
+  `BOT_SIBLINGS` environment variable (default `Vivi,Vex`). Each sibling can
+  have its own personality prompt using `BOT_PERSONALITY_VIVI` and
+  `BOT_PERSONALITY_VEX`. Provide matching tokens with
+  `DISCORD_TOKENS="TOKEN_FOR_VIVI,TOKEN_FOR_VEX"` to run them as separate bot
   accounts from the same codebase.
 
 These capabilities are intentionally simple but illustrate how the bot can be extended in many directions.
