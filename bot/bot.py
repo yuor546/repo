@@ -70,7 +70,7 @@ class ChatBot(commands.Cog):
             "You are an entertaining and helpful assistant who may use mild swearing but never slurs."
         )
 
-        self.siblings = env_list("BOT_SIBLINGS", "Alpha,Beta")
+        self.siblings = env_list("BOT_SIBLINGS", "Vivi,Beta")
         self.sibling_personalities = {}
         for s in self.siblings:
             key = f"BOT_PERSONALITY_{s.upper()}"
@@ -528,7 +528,7 @@ def main():
             raise RuntimeError("DISCORD_TOKEN or DISCORD_TOKENS must be set")
         tokens = [token]
 
-    sibling_names = env_list("BOT_SIBLINGS", "Alpha,Beta")
+    sibling_names = env_list("BOT_SIBLINGS", "Vivi,Beta")
 
     async def runner():
         tasks = []

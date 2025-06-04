@@ -61,7 +61,7 @@ export DISCORD_TOKEN="YOUR_BOT_TOKEN"
 # Optionally set a personality prompt
 export BOT_PERSONALITY="You are an entertaining assistant."
 # Optional comma-separated names for two siblings
-export BOT_SIBLINGS="Alpha,Beta"
+export BOT_SIBLINGS="Vivi,Beta"
 
 # Run the bot
 python -m bot.bot
@@ -173,7 +173,7 @@ This example demonstrates additional features beyond simple tokenization:
 - **Mentions**: It only answers when mentioned by name or via `@`, allowing it
   to sit quietly until called upon.
 - **Sibling Personalities**: Two AI siblings can be configured with the
-  `BOT_SIBLINGS` environment variable (default `Alpha,Beta`). Each sibling can
+  `BOT_SIBLINGS` environment variable (default `Vivi,Beta`). Each sibling can
   have its own personality prompt using `BOT_PERSONALITY_ALPHA` and
   `BOT_PERSONALITY_BETA`. Provide matching tokens with
   `DISCORD_TOKENS="TOKEN_FOR_ALPHA,TOKEN_FOR_BETA"` to run them as separate bot
