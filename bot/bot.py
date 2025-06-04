@@ -14,17 +14,35 @@ from .adventure import AdventureGame
 from .dialogue import DialogueMemory
 from .logger import Logger
 from .utils import env_bool, env_list
+import pickle
 from .markov import MarkovChain
+from .lstm_model import LSTMModel
 
 # Choose your AI backend here. By default we use a tiny Markov chain model.
 
 MODEL_PATH = os.getenv("MODEL_PATH", "markov_model.pkl")
+LSTM_MODEL_PATH = os.getenv("LSTM_MODEL_PATH", "lstm_model.h5")
+LSTM_VOCAB_PATH = os.getenv("LSTM_VOCAB_PATH", "lstm_vocab.pkl")
 _chain: MarkovChain | None = None
+_lstm: LSTMModel | None = None
 
 
 async def call_ai_model(prompt: str) -> str:
-    """Generate a reply using a local Markov chain model."""
-    global _chain
+    """Generate a reply using a local language model."""
+    global _chain, _lstm
+    # Prefer LSTM model if available
+    if _lstm is None:
+        if os.path.isfile(LSTM_MODEL_PATH) and os.path.isfile(LSTM_VOCAB_PATH):
+            try:
+                with open(LSTM_VOCAB_PATH, "rb") as f:
+                    stoi, itos = pickle.load(f)
+                _lstm = LSTMModel(LSTM_MODEL_PATH, stoi, itos)
+            except Exception:
+                _lstm = None
+    if _lstm:
+        return _lstm.generate(prompt)
+
+    # Fall back to Markov chain
     if _chain is None:
         tokenizer = SimpleTokenizer()
         chain = MarkovChain(tokenizer)

@@ -50,6 +50,7 @@ and make sure to follow Discord's terms of service when deploying a bot.
 # Install dependencies
 pip install -r requirements.txt
 # On Linux you may need the `ffmpeg` package for voice playback
+# Training the optional LSTM model requires the `tensorflow` package
 
 # Set the Discord token in the environment (single bot)
 export DISCORD_TOKEN="YOUR_BOT_TOKEN"
@@ -114,6 +115,19 @@ python -m bot.train_markov
 This generates `markov_model.pkl`, which `bot/bot.py` loads automatically.
 The model learns from the examples collected with `/train` and from observed
 conversations, so you can improve it over time.
+
+### Training a Small LSTM Model
+
+For a more capable local model you can train a small character-level LSTM.
+It learns from the same stored conversation pairs and saves a Keras model
+(`lstm_model.h5`) plus vocabulary file (`lstm_vocab.pkl`):
+
+```bash
+python -m bot.train_lstm
+```
+
+If these files exist the bot will load the LSTM model instead of the Markov
+chain when generating replies.
 
 ## Extensibility
 
