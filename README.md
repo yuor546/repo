@@ -65,6 +65,9 @@ export BOT_SIBLINGS="Vivi,Vex"
 
 # Run the bot
 python -m bot.bot
+# Make sure to run this command from the repository root. Running it from
+# inside the `bot/` directory will cause an `ImportError` because the package
+# cannot be located.
 ```
 
 For two sibling bots named **Vivi** and **Vex**, place both tokens in the
