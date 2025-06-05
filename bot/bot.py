@@ -632,7 +632,8 @@ class ChatBot(commands.Cog):
 async def run_single(token: str, sibling: str | None = None, prefix: str = "/"):
     intents = discord.Intents.default()
     intents.message_content = True
-    bot = commands.Bot(command_prefix=prefix, intents=intents)
+    # Disable the default help command so our custom version can register
+    bot = commands.Bot(command_prefix=prefix, intents=intents, help_command=None)
     await bot.add_cog(ChatBot(bot, name=sibling))
 
     @bot.event
