@@ -106,6 +106,10 @@ class ChatBot(commands.Cog):
         self.stt = SpeechToText(lang=os.getenv("STT_LANG", "en-US"))
         self.voice_recognizer = VoiceRecognizer()
 
+        # Relationships
+        # Each user has a score from 1-100 per bot
+        # Start around neutral (50)
+
         # Logger and dialogue memory
         self.logger = Logger()
         self.dialogue = DialogueMemory()
@@ -236,6 +240,12 @@ class ChatBot(commands.Cog):
             return
 
         personality = self.sibling_personalities.get(self.name, self.personality)
+        # Strengthen relationship slightly whenever a user talks to the bot
+        self.memory.adjust_relationship(
+            message.author.id,
+            self.name or self.bot.user.name,
+            1,
+        )
 
         tokens = self.tokenizer.encode(message.content)
         prompt = self.tokenizer.decode(tokens)
@@ -292,7 +302,7 @@ class ChatBot(commands.Cog):
     @commands.command()
     async def help(self, ctx: commands.Context):
         await ctx.send(
-            "Available commands: /ping, /help, /train, /deeptrain, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /converse, /join, /leave, /play, /transcribe, /registervoice"
+            "Available commands: /ping, /help, /train, /deeptrain, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /relationship, /converse, /join, /leave, /play, /transcribe, /registervoice"
         )
 
     @commands.command()
@@ -505,6 +515,14 @@ class ChatBot(commands.Cog):
         await ctx.send(f"You have {points} reward points.")
 
     @commands.command()
+    async def relationship(self, ctx: commands.Context):
+        """Show your relationship score with this bot."""
+        score = self.memory.relationship(
+            ctx.author.id, self.name or self.bot.user.name
+        )
+        await ctx.send(f"Our relationship score is {score}/100")
+
+    @commands.command()
     async def converse(self, ctx: commands.Context, rounds: int = 4, *, start: str = "Hello"):
         """Make this bot chat with its sibling for a few rounds."""
         others = [s for s in self.siblings if s != self.name]
@@ -611,10 +629,10 @@ class ChatBot(commands.Cog):
 
 
 
-async def run_single(token: str, sibling: str | None = None):
+async def run_single(token: str, sibling: str | None = None, prefix: str = "/"):
     intents = discord.Intents.default()
     intents.message_content = True
-    bot = commands.Bot(command_prefix="/", intents=intents)
+    bot = commands.Bot(command_prefix=prefix, intents=intents)
     await bot.add_cog(ChatBot(bot, name=sibling))
 
     @bot.event
@@ -639,9 +657,11 @@ def main():
 
     async def runner():
         tasks = []
+        multiple = len(tokens) > 1
         for i, token in enumerate(tokens):
             sibling = sibling_names[i] if i < len(sibling_names) else None
-            tasks.append(run_single(token, sibling))
+            prefix = f"/{sibling.lower()} " if multiple and sibling else "/"
+            tasks.append(run_single(token, sibling, prefix))
         await asyncio.gather(*tasks)
 
     asyncio.run(runner())

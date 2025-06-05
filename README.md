@@ -85,6 +85,8 @@ python -m bot.bot
 ```
 
 When both bots share a channel they can hold short conversations without user input.
+If multiple bots run at once each one uses a prefix based on its name, for
+example `/vivi help` or `/vex ping`. With a single bot the prefix is simply `/`.
 
 The bot supports simple slash-style commands like `/ping`, `/help`, `/tictactoe`, `/rps`, `/converse`, and history commands in
  addition to responding when it is mentioned by name or `@`. It can also join a voice channel and play a local audio file.
@@ -185,6 +187,7 @@ This example demonstrates additional features beyond simple tokenization:
 - **Voice Recognition**: Register your voice with `/registervoice`. When anyone posts an audio attachment the bot automatically compares it against registered samples and announces who it sounds like.
 - **Cookies**: Server owners can gift the bot happiness cookies via `/giftcookies`.
 - **Rewards**: Win games to earn reward points and view them with `/rewards`.
+- **Relationships**: Each user has a 1-100 relationship score with every bot and can check it via `/relationship`.
 - **Sibling Chat**: Use `/converse` to watch the sibling bots talk to each other for a few rounds. They will also naturally reply to one another when sharing a channel, up to a few messages each time.
 - **Deep Training Command**: Kick off LSTM training from Discord with `/deeptrain`.
 - **Language Filter**: The bot allows mild swearing but will replace any blocked terms with `[filtered]`.
@@ -278,6 +281,11 @@ Check the current cookie count with `/cookies`.
 
 When you win certain games (TicTacToe, RPS, GuessNumber, Hangman) you earn
 reward points. View your balance with `/rewards`.
+
+## Relationships
+
+Every user maintains a relationship score with each bot between 1 and 100.
+The score slowly increases as you chat. Check it anytime with `/relationship`.
 
 ## Logging and Dialogue Memory
 

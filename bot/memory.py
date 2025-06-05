@@ -14,6 +14,8 @@ class Memory:
             self.db["rewards"] = {}
         if "voices" not in self.db:
             self.db["voices"] = {}
+        if "relationships" not in self.db:
+            self.db["relationships"] = {}
 
     def close(self):
         self.db.close()
@@ -59,5 +61,15 @@ class Memory:
 
     def set_voice(self, user_id: int, features) -> None:
         self.db["voices"][user_id] = features
+        self.db.sync()
+
+    # Relationship helpers
+    def relationship(self, user_id: int, bot_name: str) -> int:
+        rels = self.db["relationships"].setdefault(bot_name, {})
+        return rels.get(user_id, 50)
+
+    def adjust_relationship(self, user_id: int, bot_name: str, delta: int) -> None:
+        rels = self.db["relationships"].setdefault(bot_name, {})
+        rels[user_id] = max(1, min(100, rels.get(user_id, 50) + delta))
         self.db.sync()
 
