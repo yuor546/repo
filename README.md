@@ -63,6 +63,9 @@ export BOT_PERSONALITY="You are an entertaining assistant."
 # Optional comma-separated names for two siblings
 export BOT_SIBLINGS="Vivi,Vex"
 
+# You can also place these variables in a `.env` file and `source .env`
+# before launching the bot. A sample `.env.example` is included.
+
 # Run the bot
 python -m bot.bot
 # Make sure to run this command from the repository root. Running it from
