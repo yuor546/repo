@@ -198,6 +198,34 @@ class ChatBot(commands.Cog):
         if message.author != self.bot.user:
             self.last_messages[channel_id] = (message.author.id, message.content)
 
+        # Automatic voice recognition on audio attachments
+        audio_path = None
+        for a in message.attachments:
+            name = a.filename.lower()
+            if name.endswith((".wav", ".mp3", ".ogg", ".m4a", ".flac")):
+                with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                    await a.save(tmp.name)
+                    audio_path = tmp.name
+                break
+        if audio_path:
+            sample = self.voice_recognizer.extract(audio_path)
+            os.remove(audio_path)
+            if self.memory.voice(message.author.id) is None:
+                self.memory.set_voice(message.author.id, sample.tolist())
+            best_user = None
+            best_dist = float("inf")
+            for uid, feat_list in self.memory.db["voices"].items():
+                dist = self.voice_recognizer.distance(sample, np.array(feat_list))
+                if dist < best_dist:
+                    best_dist = dist
+                    best_user = uid
+            if best_user is not None and best_user != message.author.id:
+                user = (
+                    message.guild.get_member(best_user) if message.guild else None
+                )
+                if user:
+                    await message.channel.send(f"That sounds like {user.mention}")
+
         # Only respond when mentioned or when this bot's name is in the text
         name_to_check = self.name.lower() if self.name else self.bot.user.name.lower()
         if not (
@@ -264,7 +292,7 @@ class ChatBot(commands.Cog):
     @commands.command()
     async def help(self, ctx: commands.Context):
         await ctx.send(
-            "Available commands: /ping, /help, /train, /deeptrain, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /converse, /join, /leave, /play, /transcribe, /registervoice, /identifyvoice"
+            "Available commands: /ping, /help, /train, /deeptrain, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /converse, /join, /leave, /play, /transcribe, /registervoice"
         )
 
     @commands.command()
@@ -580,37 +608,7 @@ class ChatBot(commands.Cog):
         self.memory.set_voice(ctx.author.id, feat.tolist())
         await ctx.send("Voice sample registered.")
 
-    @commands.command()
-    async def identifyvoice(self, ctx: commands.Context):
-        """Identify which registered user matches the attached audio."""
-        if not ctx.message.attachments:
-            await ctx.send("Attach an audio sample to identify.")
-            return
-        attachment = ctx.message.attachments[0]
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            await attachment.save(tmp.name)
-            path = tmp.name
-        sample = self.voice_recognizer.extract(path)
-        os.remove(path)
-        best_user = None
-        best_dist = float("inf")
-        for uid, feat_list in self.memory.db["voices"].items():
-            dist = self.voice_recognizer.distance(sample, np.array(feat_list))
-            if dist < best_dist:
-                best_dist = dist
-                best_user = uid
-        if best_user is not None:
-            user = ctx.guild.get_member(best_user)
-            if user:
-                await ctx.send(f"Sounds like {user.mention}")
-                try:
-                    await user.send("Your voice was recognized!")
-                except Exception:
-                    pass
-            else:
-                await ctx.send("User not found in this server.")
-        else:
-            await ctx.send("No matching voice registered.")
+
 
 
 async def run_single(token: str, sibling: str | None = None):

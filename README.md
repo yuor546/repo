@@ -181,7 +181,7 @@ This example demonstrates additional features beyond simple tokenization:
 - **History Commands**: Use `/history` to show recent conversation and `/clearhistory` to wipe it.
 - **Voice Chat**: Use `/join` and `/leave` to manage voice connections and `/play` to stream a local file.
 - **Voice Transcription**: Attach an audio file and use `/transcribe` to convert speech to text.
-- **Voice Recognition**: Register your voice with `/registervoice` and identify speakers with `/identifyvoice`.
+- **Voice Recognition**: Register your voice with `/registervoice`. When anyone posts an audio attachment the bot automatically compares it against registered samples and announces who it sounds like.
 - **Cookies**: Server owners can gift the bot happiness cookies via `/giftcookies`.
 - **Rewards**: Win games to earn reward points and view them with `/rewards`.
 - **Sibling Chat**: Use `/converse` to watch the sibling bots talk to each other for a few rounds. They will also naturally reply to one another when sharing a channel, up to a few messages each time.
@@ -216,7 +216,7 @@ Training samples are stored in the memory database and included in the prompt wh
 
 ## Voice Commands
 
-Use `/join` to have the bot connect to your current voice channel. `/play <file>` will play a local audio file and `/leave` disconnects the bot. Attach an audio file and use `/transcribe` to convert it to text. `/registervoice` saves your voice for recognition and `/identifyvoice` attempts to match a new sample to a registered user.
+Use `/join` to have the bot connect to your current voice channel. `/play <file>` will play a local audio file and `/leave` disconnects the bot. Attach an audio file and use `/transcribe` to convert it to text. After you register a sample with `/registervoice`, the bot will automatically try to recognize future audio attachments and mention who it thinks is speaking.
 
 ## Moderating Language
 
