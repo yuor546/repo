@@ -65,7 +65,8 @@ export BOT_PERSONALITY="You are an entertaining assistant."
 export BOT_SIBLINGS="Vivi,Vex"
 
 # You can also place these variables in a `.env` file and `source .env`
-# before launching the bot. A sample `.env.example` is included.
+# before launching the bot. The sample `.env.example` lists common
+# options except the Discord tokens, which you should export separately.
 
 # Run the bot
 python -m bot.bot
