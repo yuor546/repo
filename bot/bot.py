@@ -4,6 +4,7 @@ import random
 import asyncio
 import tempfile
 import discord
+import numpy as np
 from discord.ext import commands
 
 from .tokenizer import SimpleTokenizer
@@ -16,6 +17,7 @@ from .adventure import AdventureGame
 from .dialogue import DialogueMemory
 from .logger import Logger
 from .utils import env_bool, env_list
+from .voice_recognizer import VoiceRecognizer
 
 # Keep track of running bot instances so they can converse
 BOT_REGISTRY: dict[str, commands.Bot] = {}
@@ -102,6 +104,7 @@ class ChatBot(commands.Cog):
         self.enable_tts = env_bool("ENABLE_TTS", True)
         self.tts = TextToSpeech(lang=os.getenv("TTS_LANG", "en"))
         self.stt = SpeechToText(lang=os.getenv("STT_LANG", "en-US"))
+        self.voice_recognizer = VoiceRecognizer()
 
         # Logger and dialogue memory
         self.logger = Logger()
@@ -261,7 +264,7 @@ class ChatBot(commands.Cog):
     @commands.command()
     async def help(self, ctx: commands.Context):
         await ctx.send(
-            "Available commands: /ping, /help, /train, /deeptrain, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /converse, /join, /leave, /play, /transcribe"
+            "Available commands: /ping, /help, /train, /deeptrain, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /converse, /join, /leave, /play, /transcribe, /registervoice, /identifyvoice"
         )
 
     @commands.command()
@@ -561,6 +564,53 @@ class ChatBot(commands.Cog):
             await ctx.send(f"Transcription: {text}")
         else:
             await ctx.send("Unable to transcribe the audio.")
+
+    @commands.command()
+    async def registervoice(self, ctx: commands.Context):
+        """Register your voice with an attached audio sample."""
+        if not ctx.message.attachments:
+            await ctx.send("Attach an audio sample to register.")
+            return
+        attachment = ctx.message.attachments[0]
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            await attachment.save(tmp.name)
+            path = tmp.name
+        feat = self.voice_recognizer.extract(path)
+        os.remove(path)
+        self.memory.set_voice(ctx.author.id, feat.tolist())
+        await ctx.send("Voice sample registered.")
+
+    @commands.command()
+    async def identifyvoice(self, ctx: commands.Context):
+        """Identify which registered user matches the attached audio."""
+        if not ctx.message.attachments:
+            await ctx.send("Attach an audio sample to identify.")
+            return
+        attachment = ctx.message.attachments[0]
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            await attachment.save(tmp.name)
+            path = tmp.name
+        sample = self.voice_recognizer.extract(path)
+        os.remove(path)
+        best_user = None
+        best_dist = float("inf")
+        for uid, feat_list in self.memory.db["voices"].items():
+            dist = self.voice_recognizer.distance(sample, np.array(feat_list))
+            if dist < best_dist:
+                best_dist = dist
+                best_user = uid
+        if best_user is not None:
+            user = ctx.guild.get_member(best_user)
+            if user:
+                await ctx.send(f"Sounds like {user.mention}")
+                try:
+                    await user.send("Your voice was recognized!")
+                except Exception:
+                    pass
+            else:
+                await ctx.send("User not found in this server.")
+        else:
+            await ctx.send("No matching voice registered.")
 
 
 async def run_single(token: str, sibling: str | None = None):

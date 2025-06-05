@@ -12,6 +12,8 @@ class Memory:
             self.db["cookies"] = {}
         if "rewards" not in self.db:
             self.db["rewards"] = {}
+        if "voices" not in self.db:
+            self.db["voices"] = {}
 
     def close(self):
         self.db.close()
@@ -49,5 +51,13 @@ class Memory:
 
     def add_reward(self, user_id: int, amount: int) -> None:
         self.db["rewards"][user_id] = self.rewards(user_id) + amount
+        self.db.sync()
+
+    # Voice recognition helpers
+    def voice(self, user_id: int):
+        return self.db["voices"].get(user_id)
+
+    def set_voice(self, user_id: int, features) -> None:
+        self.db["voices"][user_id] = features
         self.db.sync()
 

@@ -51,6 +51,7 @@ and make sure to follow Discord's terms of service when deploying a bot.
 pip install -r requirements.txt
 # On Linux you may need the `ffmpeg` package for voice playback
 # Speech transcription via `/transcribe` requires the `SpeechRecognition` package
+# Voice recognition needs the `librosa` and `soundfile` packages
 # Training the optional LSTM model requires the `tensorflow` package
 
 # Set the Discord token in the environment (single bot)
@@ -180,6 +181,7 @@ This example demonstrates additional features beyond simple tokenization:
 - **History Commands**: Use `/history` to show recent conversation and `/clearhistory` to wipe it.
 - **Voice Chat**: Use `/join` and `/leave` to manage voice connections and `/play` to stream a local file.
 - **Voice Transcription**: Attach an audio file and use `/transcribe` to convert speech to text.
+- **Voice Recognition**: Register your voice with `/registervoice` and identify speakers with `/identifyvoice`.
 - **Cookies**: Server owners can gift the bot happiness cookies via `/giftcookies`.
 - **Rewards**: Win games to earn reward points and view them with `/rewards`.
 - **Sibling Chat**: Use `/converse` to watch the sibling bots talk to each other for a few rounds. They will also naturally reply to one another when sharing a channel, up to a few messages each time.
@@ -214,7 +216,7 @@ Training samples are stored in the memory database and included in the prompt wh
 
 ## Voice Commands
 
-Use `/join` to have the bot connect to your current voice channel. `/play <file>` will play a local audio file and `/leave` disconnects the bot. Attach an audio file and use `/transcribe` to convert it to text.
+Use `/join` to have the bot connect to your current voice channel. `/play <file>` will play a local audio file and `/leave` disconnects the bot. Attach an audio file and use `/transcribe` to convert it to text. `/registervoice` saves your voice for recognition and `/identifyvoice` attempts to match a new sample to a registered user.
 
 ## Moderating Language
 

@@ -2,3 +2,5 @@ discord.py
 gTTS
 tensorflow
 SpeechRecognition
+librosa
+soundfile
