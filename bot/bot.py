@@ -302,7 +302,7 @@ class ChatBot(commands.Cog):
     @commands.command()
     async def help(self, ctx: commands.Context):
         await ctx.send(
-            "Available commands: /ping, /help, /train, /deeptrain, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /relationship, /converse, /join, /leave, /play, /transcribe, /registervoice"
+            "Available commands: /ping, /help, /train, /deeptrain, /trainauto, /trainrl, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /memory, /clearhistory, /giftcookies, /cookies, /rewards, /relationship, /converse, /join, /leave, /play, /speak, /transcribe, /registervoice"
         )
 
     @commands.command()
@@ -323,6 +323,33 @@ class ChatBot(commands.Cog):
 
         await loop.run_in_executor(None, _run)
         await ctx.send("Deep training complete. New model saved.")
+
+    @commands.command()
+    async def trainauto(self, ctx: commands.Context):
+        """Train the autoencoder model."""
+        await ctx.send("Training autoencoder...")
+        loop = asyncio.get_event_loop()
+
+        def _run():
+            from .train_autoencoder import main as auto_main
+            auto_main()
+
+        await loop.run_in_executor(None, _run)
+        await ctx.send("Autoencoder training finished.")
+
+    @commands.command()
+    async def trainrl(self, ctx: commands.Context):
+        """Run reinforcement learning training."""
+        await ctx.send("Training RL model...")
+        loop = asyncio.get_event_loop()
+
+        def _run():
+            from .train_rl import main as rl_main
+            rl_main()
+
+        await loop.run_in_executor(None, _run)
+        self.game_ai.load_q_table()
+        await ctx.send("RL training complete and Q-table loaded.")
 
     @commands.command()
     async def tictactoe(self, ctx: commands.Context, opponent: discord.Member):
@@ -363,6 +390,12 @@ class ChatBot(commands.Cog):
             await ctx.send("\n".join(entries))
         else:
             await ctx.send("No history.")
+
+    @commands.command()
+    async def memory(self, ctx: commands.Context, limit: int = 5):
+        """Summarize recent dialogue with the user."""
+        summary = self.dialogue.summarize(ctx.author.id)
+        await ctx.send(summary or "No conversation yet.")
 
     @commands.command()
     async def clearhistory(self, ctx: commands.Context):
@@ -593,6 +626,19 @@ class ChatBot(commands.Cog):
         source = discord.FFmpegPCMAudio(file_path)
         vc.play(source)
         await ctx.send(f"Playing {file_path}.")
+
+    @commands.command()
+    async def speak(self, ctx: commands.Context, *, text: str):
+        """Read text aloud in the current voice channel."""
+        vc = self.voice_clients.get(ctx.guild.id)
+        if not vc:
+            await ctx.send("Join a voice channel first with /join.")
+            return
+        path = self.tts.speak(text)
+        if vc.is_playing():
+            vc.stop()
+        vc.play(discord.FFmpegPCMAudio(path), after=lambda e: os.remove(path))
+        await ctx.send(text)
 
     @commands.command()
     async def transcribe(self, ctx: commands.Context):

@@ -1,12 +1,13 @@
 import pickle
+import numpy as np
 from tensorflow import keras
 from keras.models import Sequential
-from keras.layers import Embedding, LSTM, Dense
-import numpy as np
+from keras.layers import Embedding, LSTM, Dense, RepeatVector, TimeDistributed
+
 from .memory import Memory
 
-MODEL_PATH = 'lstm_model.h5'
-VOCAB_PATH = 'lstm_vocab.pkl'
+MODEL_PATH = 'autoencoder.h5'
+VOCAB_PATH = 'ae_vocab.pkl'
 SEQ_LEN = 40
 
 
@@ -26,42 +27,43 @@ def build_vocab(text: str):
 
 
 def vectorize(text: str, stoi: dict[str, int]):
-    dataX, dataY = [], []
+    dataX = []
     for i in range(len(text) - SEQ_LEN):
         seq_in = text[i : i + SEQ_LEN]
-        seq_out = text[i + SEQ_LEN]
         dataX.append([stoi.get(ch, 0) for ch in seq_in])
-        dataY.append(stoi.get(seq_out, 0))
-    return np.array(dataX), np.array(dataY)
+    X = np.array(dataX)
+    return X
 
 
-def main(epochs: int = 5, embed: int = 32, units: int = 64):
+def main(epochs: int = 10, embed: int = 32, units: int = 64):
     text = load_text()
     if not text:
         print('No training data found.')
         return
     stoi, itos = build_vocab(text)
-    X, y = vectorize(text, stoi)
+    X = vectorize(text, stoi)
     vocab_size = len(stoi) + 1
 
     model = Sequential([
         Embedding(vocab_size, embed, input_length=SEQ_LEN),
         LSTM(units),
-        Dense(vocab_size, activation='softmax'),
+        RepeatVector(SEQ_LEN),
+        LSTM(units, return_sequences=True),
+        TimeDistributed(Dense(vocab_size, activation='softmax')),
     ])
     model.compile(loss='sparse_categorical_crossentropy', optimizer='adam')
+    y = np.expand_dims(X, -1)
     model.fit(X, y, epochs=epochs, batch_size=64)
     model.save(MODEL_PATH)
     with open(VOCAB_PATH, 'wb') as f:
         pickle.dump((stoi, itos), f)
-    print('Model saved to', MODEL_PATH)
+    print('Autoencoder saved to', MODEL_PATH)
 
 
 if __name__ == '__main__':
     import argparse
-
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', type=int, default=5)
+    parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--embed', type=int, default=32)
     parser.add_argument('--units', type=int, default=64)
     args = parser.parse_args()
