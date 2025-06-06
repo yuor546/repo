@@ -302,7 +302,7 @@ class ChatBot(commands.Cog):
     @commands.command()
     async def help(self, ctx: commands.Context):
         await ctx.send(
-            "Available commands: /ping, /help, /train, /deeptrain, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /relationship, /converse, /join, /leave, /play, /transcribe, /registervoice"
+            "Available commands: /ping, /help, /train, /deeptrain, /trainauto, /trainrl, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /relationship, /converse, /join, /leave, /play, /speak, /transcribe, /registervoice, /memory"
         )
 
     @commands.command()
@@ -323,6 +323,37 @@ class ChatBot(commands.Cog):
 
         await loop.run_in_executor(None, _run)
         await ctx.send("Deep training complete. New model saved.")
+
+    @commands.command()
+    async def trainauto(self, ctx: commands.Context, epochs: int = 5):
+        """Train the autoencoder model from conversation history."""
+        await ctx.send(f"Training autoencoder for {epochs} epochs...")
+        loop = asyncio.get_event_loop()
+
+        def _run():
+            from .train_autoencoder import main as auto_main
+            auto_main(epochs=epochs)
+
+        await loop.run_in_executor(None, _run)
+        await ctx.send("Autoencoder training complete.")
+
+    @commands.command()
+    async def trainrl(self, ctx: commands.Context, episodes: int = 1000):
+        """Train the Tic-Tac-Toe reinforcement agent."""
+        await ctx.send(f"Training RL agent for {episodes} episodes...")
+        loop = asyncio.get_event_loop()
+
+        def _run():
+            from .train_rl import train as rl_train
+            rl_train(episodes=episodes)
+
+        await loop.run_in_executor(None, _run)
+        try:
+            with open("tictactoe_q.pkl", "rb") as f:
+                self.game_ai.q_table = pickle.load(f)
+        except Exception:
+            pass
+        await ctx.send("RL training complete. Q-table updated.")
 
     @commands.command()
     async def tictactoe(self, ctx: commands.Context, opponent: discord.Member):
@@ -595,6 +626,22 @@ class ChatBot(commands.Cog):
         await ctx.send(f"Playing {file_path}.")
 
     @commands.command()
+    async def speak(self, ctx: commands.Context, *, text: str):
+        """Speak the provided text in the current voice channel."""
+        vc = self.voice_clients.get(ctx.guild.id)
+        if not vc:
+            await ctx.send("Join a voice channel first with /join.")
+            return
+        try:
+            path = self.tts.speak(text)
+            if vc.is_playing():
+                vc.stop()
+            vc.play(discord.FFmpegPCMAudio(path), after=lambda e: os.remove(path))
+            await ctx.send(f"Speaking: {text}")
+        except Exception:
+            await ctx.send("Failed to synthesize speech.")
+
+    @commands.command()
     async def transcribe(self, ctx: commands.Context):
         """Transcribe an attached audio file."""
         if not ctx.message.attachments:
@@ -625,6 +672,13 @@ class ChatBot(commands.Cog):
         os.remove(path)
         self.memory.set_voice(ctx.author.id, feat.tolist())
         await ctx.send("Voice sample registered.")
+
+    @commands.command()
+    async def memory(self, ctx: commands.Context, member: discord.Member | None = None):
+        """Summarize conversation history with a user."""
+        target = member or ctx.author
+        summary = self.dialogue.summarize(target.id)
+        await ctx.send(summary or "No memory.")
 
 
 
