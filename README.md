@@ -37,7 +37,9 @@ extend it with your own ideas.
 ## Future Work
 
 Possible extensions include adding real language model calls, more sophisticated
-game logic, and richer voice synthesis. Contributions are welcome.
+game logic, unsupervised and reinforcement learning, and richer voice synthesis.
+Future versions may integrate with game clients such as **Necto** and
+**Baritone**. Contributions are welcome.
 
 ---
 
@@ -148,6 +150,9 @@ It learns from the same stored conversation pairs and saves a Keras model
 python -m bot.train_lstm
 ```
 
+You can adjust the number of training epochs, embedding size, and LSTM unit
+count using the `--epochs`, `--embed`, and `--units` arguments.
+
 If these files exist the bot will load the LSTM model instead of the Markov
 chain when generating replies.
 
@@ -162,6 +167,27 @@ in any channel the bot can access:
 
 This invokes the same process as running `python -m bot.train_lstm` locally and
 reloads the updated model when finished.
+
+### Training an Autoencoder
+
+You can also train a sequence autoencoder for unsupervised learning:
+
+```bash
+python -m bot.train_autoencoder --epochs 10
+```
+
+Launch the same routine from Discord with `/trainauto`.
+
+### Reinforcement Learning
+
+An experimental Q-learning setup is included for game agents. Train it with:
+
+```bash
+python -m bot.train_rl --episodes 5000
+```
+
+Running `/trainrl` in Discord starts the same process and reloads the Q-table
+when complete.
 
 ## Extensibility
 
@@ -182,7 +208,9 @@ This example demonstrates additional features beyond simple tokenization:
 - **Tic‑Tac‑Toe**: The bot can host a game of tic‑tac‑toe between two users using the `/tictactoe` command.
 - **Rock Paper Scissors**: Challenge the bot with `/rps` and make moves with `/rpsmove`.
 - **History Commands**: Use `/history` to show recent conversation and `/clearhistory` to wipe it.
+- **Memory Summaries**: `/memory` displays a short recap of your latest dialogue.
 - **Voice Chat**: Use `/join` and `/leave` to manage voice connections and `/play` to stream a local file.
+- **Speak Aloud**: `/speak` reads any text in the current voice channel.
 - **Voice Transcription**: Attach an audio file and use `/transcribe` to convert speech to text.
 - **Voice Recognition**: Register your voice with `/registervoice`. When anyone posts an audio attachment the bot automatically compares it against registered samples and announces who it sounds like.
 - **Cookies**: Server owners can gift the bot happiness cookies via `/giftcookies`.
@@ -190,6 +218,8 @@ This example demonstrates additional features beyond simple tokenization:
 - **Relationships**: Each user has a 1-100 relationship score with every bot and can check it via `/relationship`.
 - **Sibling Chat**: Use `/converse` to watch the sibling bots talk to each other for a few rounds. They will also naturally reply to one another when sharing a channel, up to a few messages each time.
 - **Deep Training Command**: Kick off LSTM training from Discord with `/deeptrain`.
+- **Autoencoder Training**: Train an unsupervised model from Discord via `/trainauto`.
+- **Reinforcement Learning**: `/trainrl` launches Q-learning and reloads the table when done.
 - **Language Filter**: The bot allows mild swearing but will replace any blocked terms with `[filtered]`.
 - **Entertaining Personality**: Responses aim to be playful and amusing.
 - **Learning Mode**: The bot stores its replies as training data and even
@@ -240,7 +270,7 @@ Compile the modules to verify there are no syntax errors:
 python -m py_compile \
     bot/tokenizer.py bot/bot.py bot/memory.py bot/games.py \
     bot/tts.py bot/stt.py bot/game_ai.py bot/adventure.py bot/dialogue.py \
-    bot/logger.py bot/utils.py
+    bot/logger.py bot/utils.py bot/train_autoencoder.py bot/train_rl.py
 ```
 
 ## Text-to-Speech and DMs
