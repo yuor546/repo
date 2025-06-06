@@ -1,0 +1,725 @@
+import os
+import ast
+import random
+import asyncio
+import tempfile
+import discord
+import numpy as np
+from discord.ext import commands
+
+from .tokenizer import SimpleTokenizer
+from .memory import Memory
+from .games import TicTacToeGame, RockPaperScissorsGame, GuessNumberGame, HangmanGame
+from .tts import TextToSpeech
+from .stt import SpeechToText
+from .game_ai import GameAI
+from .adventure import AdventureGame
+from .dialogue import DialogueMemory
+from .logger import Logger
+from .utils import env_bool, env_list
+from .voice_recognizer import VoiceRecognizer
+
+# Keep track of running bot instances so they can converse
+BOT_REGISTRY: dict[str, commands.Bot] = {}
+BOT_USERS: dict[int, str] = {}
+import pickle
+from .markov import MarkovChain
+from .lstm_model import LSTMModel
+
+# Choose your AI backend here. By default we use a tiny Markov chain model.
+
+MODEL_PATH = os.getenv("MODEL_PATH", "markov_model.pkl")
+LSTM_MODEL_PATH = os.getenv("LSTM_MODEL_PATH", "lstm_model.h5")
+LSTM_VOCAB_PATH = os.getenv("LSTM_VOCAB_PATH", "lstm_vocab.pkl")
+_chain: MarkovChain | None = None
+_lstm: LSTMModel | None = None
+
+# Limit automatic sibling conversation to avoid infinite loops
+MAX_CONVERSE_ROUNDS = 6
+
+
+async def call_ai_model(prompt: str) -> str:
+    """Generate a reply using a local language model."""
+    global _chain, _lstm
+    # Prefer LSTM model if available
+    if _lstm is None:
+        if os.path.isfile(LSTM_MODEL_PATH) and os.path.isfile(LSTM_VOCAB_PATH):
+            try:
+                with open(LSTM_VOCAB_PATH, "rb") as f:
+                    stoi, itos = pickle.load(f)
+                _lstm = LSTMModel(LSTM_MODEL_PATH, stoi, itos)
+            except Exception:
+                _lstm = None
+    if _lstm:
+        return _lstm.generate(prompt)
+
+    # Fall back to Markov chain
+    if _chain is None:
+        tokenizer = SimpleTokenizer()
+        chain = MarkovChain(tokenizer)
+        if os.path.isfile(MODEL_PATH):
+            try:
+                chain.load(MODEL_PATH)
+                _chain = chain
+            except Exception:
+                _chain = None
+        else:
+            _chain = None
+    if _chain:
+        return _chain.generate(prompt)
+    return f"Echo: {prompt}"
+
+class ChatBot(commands.Cog):
+    def __init__(self, bot: commands.Bot, tokenizer=None, name: str | None = None):
+        self.bot = bot
+        self.name = name
+        self.tokenizer = tokenizer or SimpleTokenizer()
+        self.personality = os.getenv(
+            "BOT_PERSONALITY",
+            "You are an entertaining and helpful assistant who may use mild swearing but never slurs."
+        )
+
+        self.siblings = env_list("BOT_SIBLINGS", "Vivi,Vex")
+        self.sibling_personalities = {}
+        for s in self.siblings:
+            key = f"BOT_PERSONALITY_{s.upper()}"
+            self.sibling_personalities[s] = os.getenv(key, self.personality)
+
+        self.last_messages = {}
+
+        # Persistent memory handler
+        self.memory = Memory()
+
+        # Active games per channel
+        self.tictactoe_games = {}
+        self.rps_games = {}
+        self.guess_games = {}
+        self.hangman_games = {}
+        self.adventure_games = {}
+        self.voice_clients = {}
+        # Track ongoing sibling conversations per channel
+        self.converse_depth: dict[int, int] = {}
+
+        # Voice and TTS
+        self.enable_tts = env_bool("ENABLE_TTS", True)
+        self.tts = TextToSpeech(lang=os.getenv("TTS_LANG", "en"))
+        self.stt = SpeechToText(lang=os.getenv("STT_LANG", "en-US"))
+        self.voice_recognizer = VoiceRecognizer()
+
+        # Relationships
+        # Each user has a score from 1-100 per bot
+        # Start around neutral (50)
+
+        # Logger and dialogue memory
+        self.logger = Logger()
+        self.dialogue = DialogueMemory()
+
+        # Game AI stub
+        self.game_ai = GameAI()
+
+        # Cursing and slur filter configuration
+        self.allowed_cuss = {"damn", "shit", "fuck"}
+        # Replace with your own blocked terms; these are placeholders
+        self.blocked_words = {"badslur1", "badslur2"}
+
+    def cog_unload(self):
+        self.memory.close()
+        self.logger.log("Cog unloaded")
+
+    # Utility methods
+    def history(self, channel_id: int) -> str:
+        return self.memory.history(channel_id)
+
+    def update_history(self, channel_id: int, entry: str) -> None:
+        self.memory.update_history(channel_id, entry)
+
+    def filter_output(self, text: str) -> str:
+        """Replace blocked words with [filtered] while allowing mild cussing."""
+        tokens = text.split()
+        out_tokens = []
+        for t in tokens:
+            word = t.lower().strip(".,!?")
+            if word in self.blocked_words:
+                out_tokens.append("[filtered]")
+            else:
+                out_tokens.append(t)
+        return " ".join(out_tokens)
+
+    def think(self, message: str) -> str | None:
+        """Very small reasoning step for math expressions."""
+        try:
+            tree = ast.parse(message, mode="eval")
+            if all(
+                isinstance(
+                    node,
+                    (
+                        ast.Expression,
+                        ast.BinOp,
+                        ast.UnaryOp,
+                        ast.Num,
+                        ast.Constant,
+                        ast.operator,
+                    ),
+                )
+                for node in ast.walk(tree)
+            ):
+                result = eval(compile(tree, filename="<ast>", mode="eval"))
+                return str(result)
+        except Exception:
+            pass
+        return None
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author == self.bot.user:
+            return
+
+        channel_id = message.channel.id
+
+        # Track human vs bot messages to manage sibling conversations
+        if not message.author.bot:
+            self.converse_depth[channel_id] = 0
+        elif message.author.name in self.siblings and message.author.name != self.name:
+            depth = self.converse_depth.get(channel_id, 0)
+            if depth >= MAX_CONVERSE_ROUNDS:
+                return
+            self.converse_depth[channel_id] = depth + 1
+            respond_anyway = True
+        else:
+            respond_anyway = False
+
+        self.logger.log(f"Message from {message.author}: {message.content}")
+        self.dialogue.add(message.author.id, "User", message.content)
+
+        ctx = await self.bot.get_context(message)
+        if ctx.valid:
+            return  # Let command processing handle it
+
+        # Learn from human-to-human conversations
+        last = self.last_messages.get(channel_id)
+        if last and last[0] != message.author.id:
+            self.memory.add_training(last[1], message.content)
+        if message.author != self.bot.user:
+            self.last_messages[channel_id] = (message.author.id, message.content)
+
+        # Automatic voice recognition on audio attachments
+        audio_path = None
+        for a in message.attachments:
+            name = a.filename.lower()
+            if name.endswith((".wav", ".mp3", ".ogg", ".m4a", ".flac")):
+                with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                    await a.save(tmp.name)
+                    audio_path = tmp.name
+                break
+        if audio_path:
+            sample = self.voice_recognizer.extract(audio_path)
+            os.remove(audio_path)
+            if self.memory.voice(message.author.id) is None:
+                self.memory.set_voice(message.author.id, sample.tolist())
+            best_user = None
+            best_dist = float("inf")
+            for uid, feat_list in self.memory.db["voices"].items():
+                dist = self.voice_recognizer.distance(sample, np.array(feat_list))
+                if dist < best_dist:
+                    best_dist = dist
+                    best_user = uid
+            if best_user is not None and best_user != message.author.id:
+                user = (
+                    message.guild.get_member(best_user) if message.guild else None
+                )
+                if user:
+                    await message.channel.send(f"That sounds like {user.mention}")
+
+        # Only respond when mentioned or when this bot's name is in the text
+        name_to_check = self.name.lower() if self.name else self.bot.user.name.lower()
+        if not (
+            self.bot.user in message.mentions
+            or name_to_check in message.content.lower()
+            or respond_anyway
+        ):
+            return
+
+        personality = self.sibling_personalities.get(self.name, self.personality)
+        # Strengthen relationship slightly whenever a user talks to the bot
+        self.memory.adjust_relationship(
+            message.author.id,
+            self.name or self.bot.user.name,
+            1,
+        )
+
+        tokens = self.tokenizer.encode(message.content)
+        prompt = self.tokenizer.decode(tokens)
+
+        # Simple reasoning step (math evaluation)
+        thought = self.think(prompt)
+        if thought is not None:
+            await message.channel.send(thought)
+            self.update_history(channel_id, f"\nUser: {prompt}\nAssistant: {thought}")
+            return
+
+        history = self.history(channel_id)
+        training = self.memory.training()
+        if prompt in training:
+            response = training[prompt]
+        else:
+            combined_prompt = f"{personality}\n{history}\nUser: {prompt}\nAssistant:"
+            response = await call_ai_model(combined_prompt)
+
+        filtered = self.filter_output(response)
+        self.memory.add_training(prompt, response)
+        await message.channel.send(filtered)
+        if self.enable_tts:
+            # If connected to a voice channel, speak the reply aloud
+            if message.guild and message.guild.id in self.voice_clients:
+                vc = self.voice_clients[message.guild.id]
+                try:
+                    path = self.tts.speak(filtered)
+                    if vc.is_playing():
+                        vc.stop()
+                    vc.play(
+                        discord.FFmpegPCMAudio(path),
+                        after=lambda e: os.remove(path),
+                    )
+                except Exception:
+                    pass
+            # Also send the text as a private message
+            try:
+                await message.author.send(filtered)
+            except Exception:
+                pass
+        self.update_history(channel_id, f"\nUser: {prompt}\nAssistant: {filtered}")
+        self.logger.log(f"Response: {filtered}")
+        self.dialogue.add(message.author.id, "Assistant", filtered)
+
+    def reward(self, user_id: int, amount: int = 1):
+        """Reward a user with points."""
+        self.memory.add_reward(user_id, amount)
+
+    @commands.command()
+    async def ping(self, ctx: commands.Context):
+        await ctx.send("Pong!")
+
+    @commands.command()
+    async def help(self, ctx: commands.Context):
+        await ctx.send(
+            "Available commands: /ping, /help, /train, /deeptrain, /trainauto, /trainrl, /tictactoe, /move, /rps, /rpsmove, /guessnumber, /guess, /hangman, /hang, /adventure, /adv, /dm, /history, /clearhistory, /giftcookies, /cookies, /rewards, /relationship, /converse, /join, /leave, /play, /speak, /transcribe, /registervoice, /memory"
+        )
+
+    @commands.command()
+    async def train(self, ctx: commands.Context, prompt: str, response: str):
+        """Store a simple training pair."""
+        self.memory.add_training(prompt, response)
+        await ctx.send("Training example stored.")
+
+    @commands.command()
+    async def deeptrain(self, ctx: commands.Context):
+        """Run deep LSTM training using stored conversations."""
+        await ctx.send("Starting deep training. This may take a while...")
+        loop = asyncio.get_event_loop()
+
+        def _run():
+            from .train_lstm import main as train_main
+            train_main()
+
+        await loop.run_in_executor(None, _run)
+        await ctx.send("Deep training complete. New model saved.")
+
+    @commands.command()
+    async def trainauto(self, ctx: commands.Context, epochs: int = 5):
+        """Train the autoencoder model from conversation history."""
+        await ctx.send(f"Training autoencoder for {epochs} epochs...")
+        loop = asyncio.get_event_loop()
+
+        def _run():
+            from .train_autoencoder import main as auto_main
+            auto_main(epochs=epochs)
+
+        await loop.run_in_executor(None, _run)
+        await ctx.send("Autoencoder training complete.")
+
+    @commands.command()
+    async def trainrl(self, ctx: commands.Context, episodes: int = 1000):
+        """Train the Tic-Tac-Toe reinforcement agent."""
+        await ctx.send(f"Training RL agent for {episodes} episodes...")
+        loop = asyncio.get_event_loop()
+
+        def _run():
+            from .train_rl import train as rl_train
+            rl_train(episodes=episodes)
+
+        await loop.run_in_executor(None, _run)
+        try:
+            with open("tictactoe_q.pkl", "rb") as f:
+                self.game_ai.q_table = pickle.load(f)
+        except Exception:
+            pass
+        await ctx.send("RL training complete. Q-table updated.")
+
+    @commands.command()
+    async def tictactoe(self, ctx: commands.Context, opponent: discord.Member):
+        channel = ctx.channel.id
+        if channel in self.tictactoe_games:
+            await ctx.send("A game is already in progress in this channel.")
+            return
+        self.tictactoe_games[channel] = TicTacToeGame(ctx.author.id, opponent.id)
+        await ctx.send(
+            f"TicTacToe started! {ctx.author.mention} vs {opponent.mention}. Use /move <0-8>."
+        )
+
+    @commands.command()
+    async def move(self, ctx: commands.Context, position: int):
+        channel = ctx.channel.id
+        game = self.tictactoe_games.get(channel)
+        if not game:
+            await ctx.send("No active game in this channel.")
+            return
+        msg, result = game.make_move(ctx.author.id, position)
+        if msg:
+            await ctx.send(msg)
+        if result == "END":
+            winner_mark = game.check_winner()
+            if winner_mark:
+                winner_id = (
+                    game.state.players[0] if winner_mark == "X" else game.state.players[1]
+                )
+                self.reward(winner_id)
+            del self.tictactoe_games[channel]
+
+    @commands.command()
+    async def history(self, ctx: commands.Context, limit: int = 10):
+        channel = ctx.channel.id
+        hist = self.history(channel)
+        entries = hist.strip().split("\n")[-2 * limit:]
+        if entries:
+            await ctx.send("\n".join(entries))
+        else:
+            await ctx.send("No history.")
+
+    @commands.command()
+    async def clearhistory(self, ctx: commands.Context):
+        channel = ctx.channel.id
+        self.memory.clear_history(channel)
+        await ctx.send("History cleared.")
+
+    @commands.command()
+    async def rps(self, ctx: commands.Context, opponent: discord.Member, rounds: int = 3):
+        channel = ctx.channel.id
+        if channel in self.rps_games:
+            await ctx.send("Rock Paper Scissors already running in this channel.")
+            return
+        self.rps_games[channel] = RockPaperScissorsGame(ctx.author.id, opponent.id, rounds)
+        await ctx.send(
+            f"RPS started! {ctx.author.mention} vs {opponent.mention}. Use /rpsmove <choice>."
+        )
+
+    @commands.command()
+    async def rpsmove(self, ctx: commands.Context, choice: str):
+        channel = ctx.channel.id
+        game = self.rps_games.get(channel)
+        if not game:
+            await ctx.send("No active RPS game in this channel.")
+            return
+        if ctx.author.id == game.players[0]:
+            game_choice = choice
+            bot_choice = random.choice(RockPaperScissorsGame.CHOICES)
+            result = game.play_round(game_choice, bot_choice)
+            await ctx.send(f"You chose {game_choice}, bot chose {bot_choice}. {result}")
+        else:
+            await ctx.send("Only the game starter can play against the bot.")
+        if game.state.current_round >= game.state.rounds:
+            p1 = game.players[0]
+            p2 = game.players[1]
+            s1 = game.state.scores[p1]
+            s2 = game.state.scores[p2]
+            if s1 > s2:
+                self.reward(p1)
+            elif s2 > s1:
+                self.reward(p2)
+            del self.rps_games[channel]
+
+    @commands.command()
+    async def guessnumber(self, ctx: commands.Context, max_attempts: int = 5):
+        """Start a number guessing game."""
+        channel = ctx.channel.id
+        if channel in self.guess_games:
+            await ctx.send("GuessNumber already running in this channel.")
+            return
+        self.guess_games[channel] = GuessNumberGame(max_attempts)
+        await ctx.send("Guess a number between 1 and 100 using /guess <num>.")
+
+    @commands.command()
+    async def guess(self, ctx: commands.Context, number: int):
+        channel = ctx.channel.id
+        game = self.guess_games.get(channel)
+        if not game:
+            await ctx.send("No active GuessNumber game.")
+            return
+        result = game.guess(number)
+        await ctx.send(result)
+        if "Correct" in result:
+            self.reward(ctx.author.id)
+        if "Correct" in result or "Out of attempts" in result:
+            del self.guess_games[channel]
+
+    @commands.command()
+    async def dm(self, ctx: commands.Context, *, message: str):
+        """Send yourself a private message from the bot."""
+        try:
+            await ctx.author.send(message)
+            await ctx.send("DM sent.")
+        except Exception:
+            await ctx.send("Unable to send DM.")
+
+    @commands.command()
+    async def hangman(self, ctx: commands.Context, max_attempts: int = 6):
+        """Start a hangman game."""
+        channel = ctx.channel.id
+        if channel in self.hangman_games:
+            await ctx.send("Hangman already running in this channel.")
+            return
+        self.hangman_games[channel] = HangmanGame(max_attempts)
+        game = self.hangman_games[channel]
+        await ctx.send(f"Hangman started! {game.state.display()} Use /hang <letter>.")
+
+    @commands.command()
+    async def hang(self, ctx: commands.Context, letter: str):
+        channel = ctx.channel.id
+        game = self.hangman_games.get(channel)
+        if not game:
+            await ctx.send("No active Hangman game.")
+            return
+        result = game.guess(letter)
+        await ctx.send(result)
+        if "You win" in result:
+            self.reward(ctx.author.id)
+        if "Game over" in result or "You win" in result:
+            del self.hangman_games[channel]
+
+    @commands.command()
+    async def adventure(self, ctx: commands.Context):
+        """Start a tiny text adventure."""
+        channel = ctx.channel.id
+        if channel in self.adventure_games:
+            await ctx.send("Adventure already running. Use /adv to play.")
+            return
+        self.adventure_games[channel] = AdventureGame()
+        await ctx.send(self.adventure_games[channel].look())
+
+    @commands.command()
+    async def adv(self, ctx: commands.Context, *, command: str):
+        game = self.adventure_games.get(ctx.channel.id)
+        if not game:
+            await ctx.send("No active adventure. Start with /adventure.")
+            return
+        result = game.handle_command(command)
+        await ctx.send(result)
+        if game.game_over:
+            del self.adventure_games[ctx.channel.id]
+
+    # Cookie and reward commands
+    @commands.command()
+    async def giftcookies(self, ctx: commands.Context, amount: int = 1):
+        """Give the bot happiness cookies (server owner only)."""
+        if not ctx.guild:
+            await ctx.send("This command must be used in a server.")
+            return
+        if ctx.author.id != ctx.guild.owner_id:
+            await ctx.send("Only the server owner can gift cookies.")
+            return
+        self.memory.add_cookies(ctx.guild.id, amount)
+        total = self.memory.cookies(ctx.guild.id)
+        await ctx.send(f"Yum! Thank you for {amount} cookies. Total: {total}")
+
+    @commands.command()
+    async def cookies(self, ctx: commands.Context):
+        """Check how many cookies the bot has."""
+        if not ctx.guild:
+            await ctx.send("Use this in a server.")
+            return
+        total = self.memory.cookies(ctx.guild.id)
+        await ctx.send(f"I currently have {total} cookies!")
+
+    @commands.command()
+    async def rewards(self, ctx: commands.Context):
+        """Show your reward points."""
+        points = self.memory.rewards(ctx.author.id)
+        await ctx.send(f"You have {points} reward points.")
+
+    @commands.command()
+    async def relationship(self, ctx: commands.Context):
+        """Show your relationship score with this bot."""
+        score = self.memory.relationship(
+            ctx.author.id, self.name or self.bot.user.name
+        )
+        await ctx.send(f"Our relationship score is {score}/100")
+
+    @commands.command()
+    async def converse(self, ctx: commands.Context, rounds: int = 4, *, start: str = "Hello"):
+        """Make this bot chat with its sibling for a few rounds."""
+        others = [s for s in self.siblings if s != self.name]
+        if not others:
+            await ctx.send("No sibling configured to talk to.")
+            return
+        other = others[0]
+        other_bot = BOT_REGISTRY.get(other)
+        if not other_bot:
+            await ctx.send(f"Sibling {other} is not online.")
+            return
+        channel = ctx.channel
+        history = ""
+        last = start
+        for i in range(rounds):
+            prompt_self = f"{self.sibling_personalities.get(self.name, self.personality)}\n{history}\nUser: {last}\nAssistant:"
+            resp_self = await call_ai_model(prompt_self)
+            resp_self = self.filter_output(resp_self)
+            await channel.send(resp_self)
+            history += f"\n{self.name}: {resp_self}"
+            last = resp_self
+
+            prompt_other = f"{self.sibling_personalities.get(other, self.personality)}\n{history}\nUser: {last}\nAssistant:"
+            resp_other = await call_ai_model(prompt_other)
+            resp_other = self.filter_output(resp_other)
+            await other_bot.get_channel(channel.id).send(resp_other)
+            history += f"\n{other}: {resp_other}"
+            last = resp_other
+
+    # Voice channel commands
+    @commands.command()
+    async def join(self, ctx: commands.Context):
+        """Join the voice channel of the command author."""
+        if not ctx.author.voice:
+            await ctx.send("You are not in a voice channel.")
+            return
+        if ctx.guild.id in self.voice_clients:
+            await ctx.send("Already connected.")
+            return
+        channel = ctx.author.voice.channel
+        vc = await channel.connect()
+        self.voice_clients[ctx.guild.id] = vc
+        await ctx.send(f"Joined {channel.name}")
+
+    @commands.command()
+    async def leave(self, ctx: commands.Context):
+        """Disconnect from the current voice channel."""
+        vc = self.voice_clients.get(ctx.guild.id)
+        if vc:
+            await vc.disconnect()
+            del self.voice_clients[ctx.guild.id]
+            await ctx.send("Left the voice channel.")
+        else:
+            await ctx.send("Not connected to a voice channel.")
+
+    @commands.command()
+    async def play(self, ctx: commands.Context, file_path: str):
+        """Play a local audio file in the current voice channel."""
+        vc = self.voice_clients.get(ctx.guild.id)
+        if not vc:
+            await ctx.send("Join a voice channel first with /join.")
+            return
+        if not os.path.isfile(file_path):
+            await ctx.send("Audio file not found.")
+            return
+        if vc.is_playing():
+            vc.stop()
+        source = discord.FFmpegPCMAudio(file_path)
+        vc.play(source)
+        await ctx.send(f"Playing {file_path}.")
+
+    @commands.command()
+    async def speak(self, ctx: commands.Context, *, text: str):
+        """Speak the provided text in the current voice channel."""
+        vc = self.voice_clients.get(ctx.guild.id)
+        if not vc:
+            await ctx.send("Join a voice channel first with /join.")
+            return
+        try:
+            path = self.tts.speak(text)
+            if vc.is_playing():
+                vc.stop()
+            vc.play(discord.FFmpegPCMAudio(path), after=lambda e: os.remove(path))
+            await ctx.send(f"Speaking: {text}")
+        except Exception:
+            await ctx.send("Failed to synthesize speech.")
+
+    @commands.command()
+    async def transcribe(self, ctx: commands.Context):
+        """Transcribe an attached audio file."""
+        if not ctx.message.attachments:
+            await ctx.send("Attach an audio file to transcribe.")
+            return
+        attachment = ctx.message.attachments[0]
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            await attachment.save(tmp.name)
+            path = tmp.name
+        text = self.stt.transcribe(path)
+        os.remove(path)
+        if text:
+            await ctx.send(f"Transcription: {text}")
+        else:
+            await ctx.send("Unable to transcribe the audio.")
+
+    @commands.command()
+    async def registervoice(self, ctx: commands.Context):
+        """Register your voice with an attached audio sample."""
+        if not ctx.message.attachments:
+            await ctx.send("Attach an audio sample to register.")
+            return
+        attachment = ctx.message.attachments[0]
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            await attachment.save(tmp.name)
+            path = tmp.name
+        feat = self.voice_recognizer.extract(path)
+        os.remove(path)
+        self.memory.set_voice(ctx.author.id, feat.tolist())
+        await ctx.send("Voice sample registered.")
+
+    @commands.command()
+    async def memory(self, ctx: commands.Context, member: discord.Member | None = None):
+        """Summarize conversation history with a user."""
+        target = member or ctx.author
+        summary = self.dialogue.summarize(target.id)
+        await ctx.send(summary or "No memory.")
+
+
+
+
+async def run_single(token: str, sibling: str | None = None, prefix: str = "/"):
+    intents = discord.Intents.default()
+    intents.message_content = True
+    # Disable the default help command so our custom version can register
+    bot = commands.Bot(command_prefix=prefix, intents=intents, help_command=None)
+    await bot.add_cog(ChatBot(bot, name=sibling))
+
+    @bot.event
+    async def on_ready():
+        BOT_REGISTRY[sibling or bot.user.name] = bot
+        BOT_USERS[bot.user.id] = sibling or bot.user.name
+
+    await bot.start(token)
+
+
+def main():
+    tokens_env = os.getenv("DISCORD_TOKENS")
+    if tokens_env:
+        tokens = [t.strip() for t in tokens_env.split(",") if t.strip()]
+    else:
+        token = os.getenv("DISCORD_TOKEN")
+        if not token:
+            raise RuntimeError("DISCORD_TOKEN or DISCORD_TOKENS must be set")
+        tokens = [token]
+
+    sibling_names = env_list("BOT_SIBLINGS", "Vivi,Vex")
+
+    async def runner():
+        tasks = []
+        multiple = len(tokens) > 1
+        for i, token in enumerate(tokens):
+            sibling = sibling_names[i] if i < len(sibling_names) else None
+            prefix = f"/{sibling.lower()} " if multiple and sibling else "/"
+            tasks.append(run_single(token, sibling, prefix))
+        await asyncio.gather(*tasks)
+
+    asyncio.run(runner())
+
+if __name__ == "__main__":
+    main()
